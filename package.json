@@ -1,0 +1,26 @@
+{
+  "name": "elastic-logs",
+  "types": ["module"],
+  "version": "1.0",
+  "homepage": "https://github.com/descrepes/mod-elastic-logs",
+  "author": "Alexandre Le Mao",
+  "description": "Store Shinken logs in Elasticsearch",
+  "contributors": [
+    {
+      "name": "Alexandre Le Mao",
+      "email": "alexandre.lemao@gmail.com"
+    }
+  ],
+  "repository": "https://github.com/descrepes/mod-elastic-logs",
+  "keywords": [
+    "module",
+    "broker",
+    "log",
+    "logs",
+    "logstore"
+  ],
+  "dependencies": {
+    "shinken": ">=2.0"
+  },
+  "license": "AGPL"
+}
