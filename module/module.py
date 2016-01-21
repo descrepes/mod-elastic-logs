@@ -167,6 +167,10 @@ class ElasticLogs(BaseModule):
         try:
             self.es = Elasticsearch(self.hosts.split(','), timeout=int(self.timeout))
 
+            logger.info("[elastic-logs] connected to the ES Cluster: %s", self.hosts)
+            self.is_connected = CONNECTED
+            self.next_logs_rotation = time.time()
+
         except ConnectionError as e:
             logger.error("[elastic-logs] Cluster is not available: %s", str(e))
             return False
