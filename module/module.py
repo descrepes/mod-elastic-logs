@@ -299,10 +299,19 @@ class ElasticLogs(BaseModule):
 
     def create_index(self,index):
         try:
+            logger.debug("[elastic-logs] Creating index %s ...", index)
             self.es.indices.create(index)
         except Exception, exp:
-            logger.error("[elastic-logs] exception: %s", str(exp))
+            logger.error("[elastic-logs] exception while creating index %s: %s", index, str(exp))
 
+    def is_index_exists(self,index):
+        try:
+            if not self.es.indices.exists(index):
+                return true
+            else:
+                return false
+        except Exception, exp:
+            logger.error("[elastic-logs] exception while checking the existance of the index %s: %s", index, str(exp))
 
     def rotate_logs(self):
         """
@@ -429,8 +438,7 @@ class ElasticLogs(BaseModule):
                     self.open()
 
             # Create index ?
-            if not self.es.indices.exists(index_name):
-                logger.debug("[elastic-logs] Creating index %s ...", index_name)
+            if not self.is_index_exists(index_name):
                 self.create_index(index_name)
 
             # Logs commit ?
