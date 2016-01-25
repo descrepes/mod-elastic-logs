@@ -37,7 +37,7 @@ import re
 import sys
 import traceback
 
-from elasticsearch import Elasticsearch,helpers
+from elasticsearch import Elasticsearch,helpers,ElasticsearchException,TransportError
 import curator
 
 from shinken.objects.service import Service
@@ -164,15 +164,16 @@ class ElasticLogs(BaseModule):
         Update log rotation time to force a log rotation
         """
         logger.info("[elastic-logs] trying to connect to ES Cluster: %s", self.hosts)
+	self.es = Elasticsearch(self.hosts.split(','), timeout=int(self.timeout))
         try:
-            self.es = Elasticsearch(self.hosts.split(','), timeout=int(self.timeout))
-
+	    self.es.cluster.health()
             logger.info("[elastic-logs] connected to the ES Cluster: %s", self.hosts)
             self.is_connected = CONNECTED
             self.next_logs_rotation = time.time()
 
-        except ConnectionError as e:
-            logger.error("[elastic-logs] Cluster is not available: %s", str(e))
+        except TransportError, exp:
+            logger.error("[elastic-logs] Cluster is not available: %s", str(exp))
+	    self.is_connected = DISCONNECTED
             return False
         
         return True
@@ -301,17 +302,20 @@ class ElasticLogs(BaseModule):
         try:
             logger.debug("[elastic-logs] Creating index %s ...", index)
             self.es.indices.create(index)
-        except Exception, exp:
+        except ElasticsearchException, exp:
             logger.error("[elastic-logs] exception while creating index %s: %s", index, str(exp))
 
     def is_index_exists(self,index):
-        try:
-            if not self.es.indices.exists(index):
-                return true
-            else:
-                return false
-        except Exception, exp:
-            logger.error("[elastic-logs] exception while checking the existance of the index %s: %s", index, str(exp))
+	if not self.is_connected == CONNECTED:
+            try:
+                if self.es.indices.exists(index):
+                    return True
+                else:
+                    return False
+            except ElasticsearchException, exp:
+                logger.error("[elastic-logs] exception while checking the existance of the index %s: %s", index, str(exp))
+
+	return True    
 
     def rotate_logs(self):
         """
@@ -331,32 +335,38 @@ class ElasticLogs(BaseModule):
         today0000 = datetime(today.year, today.month, today.day, 0, 0, 0)
         today0005 = datetime(today.year, today.month, today.day, 0, 5, 0)
         oldest = today0000 - timedelta(days=self.max_logs_age)
-        
-        indices = curator.get_indices(self.es)
-        filter_list = []
-        filter_list.append(curator.build_filter(kindOf='prefix', value=self.index_prefix))
-        filter_list.append(
-            curator.build_filter(
-                kindOf='older_than', value=self.max_logs_age, time_unit='days',
-                timestring='%Y.%m.%d'
-            )
-        )
-        working_list = indices
-        for filter in filter_list:
-            working_list = curator.apply_filter(working_list, **filter)
-
-        curator.delete(self.es,working_list)        
-        
-        logger.info("[elastic-logs] removed %d logs older than %s days.", working_list, self.max_logs_age)
-
         if now < time.mktime(today0005.timetuple()):
             next_rotation = today0005
         else:
             next_rotation = today0005 + timedelta(days=1)
 
-        # See you tomorrow
-        self.next_logs_rotation = time.mktime(next_rotation.timetuple())
-        logger.info("[elastic-logs] next log rotation at %s " % time.asctime(time.localtime(self.next_logs_rotation)))
+	try: 
+            indices = curator.get_indices(self.es)
+            filter_list = []
+            filter_list.append(curator.build_filter(kindOf='prefix', value=self.index_prefix))
+            filter_list.append(
+                curator.build_filter(
+                    kindOf='older_than', value=self.max_logs_age, time_unit='days',
+                    timestring='%Y.%m.%d'
+                )
+            )
+            working_list = indices
+            for filter in filter_list:
+                working_list = curator.apply_filter(working_list, **filter)
+
+            curator.delete(self.es,working_list)        
+            logger.info("[elastic-logs] removed %d logs older than %s days.", working_list, self.max_logs_age)
+
+	except Exception, exp:
+	    logger.error("[elastic-logs] Exception while rotating indices %s: %s", working_list, str(exp))
+
+	if now < time.mktime(today0005.timetuple()):
+            next_rotation = today0005
+        else:
+            next_rotation = today0005 + timedelta(days=1)
+
+	self.next_logs_rotation = time.mktime(next_rotation.timetuple())
+	logger.info("[elastic-logs] next log rotation at %s " % time.asctime(time.localtime(self.next_logs_rotation)))
 
 
     def commit_logs(self):
@@ -369,7 +379,7 @@ class ElasticLogs(BaseModule):
         if not self.is_connected == CONNECTED:
             if not self.open():
                 logger.warning("[elastic-logs] log commiting failed")
-                logger.warning("[elastic-logs] %d lines to insert in database", len(self.logs_cache))
+                logger.warning("[elastic-logs] %d lines to insert in the index", len(self.logs_cache))
                 return
 
         logger.debug("[elastic-logs] commiting ...")
@@ -401,13 +411,9 @@ class ElasticLogs(BaseModule):
             result = helpers.bulk(self.es,some_logs,self.commit_volume)
             logger.debug("[elastic-logs] inserted %d logs.", result)
 
-        except AutoReconnect, exp:
-            logger.error("[elastic-logs] Autoreconnect exception when inserting lines: %s", str(exp))
-            self.is_connected = SWITCHING
-            # Abort commit ... will be finished next time!
-        except Exception, exp:
+        except ElasticsearchException, exp:
             self.close()
-            logger.error("[elastic-logs] Database error occurred when commiting: %s", exp)
+            logger.error("[elastic-logs] Error occurred when commiting: %s", exp)
 
         logger.debug("[elastic-logs] time to insert %s logs (%2.4f)", logs_to_commit, time.time() - now)
 
@@ -434,7 +440,6 @@ class ElasticLogs(BaseModule):
                 # Test connection every 5 seconds ...
                 db_test_connection = now + self.cluster_test_period
                 if self.is_connected == DISCONNECTED:
-                    logger.warning("[elastic-logs] Trying to connect to cluster ...")
                     self.open()
 
             # Create index ?
