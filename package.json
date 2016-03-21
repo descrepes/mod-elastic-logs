@@ -1,7 +1,7 @@
 {
   "name": "elastic-logs",
   "types": ["module"],
-  "version": "1.0",
+  "version": "1.0.1",
   "homepage": "https://github.com/descrepes/mod-elastic-logs",
   "author": "Alexandre Le Mao",
   "description": "Store Shinken logs in Elasticsearch",
