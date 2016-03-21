@@ -263,7 +263,7 @@ class ElasticLogs(BaseModule):
         logger.debug("[elastic-logs] service check result received: %s", service_id)
 
         if self.services_cache and service_id in self.services_cache:
-            self.record_availability(host_name, service_description, brok)
+            #self.record_availability(host_name, service_description, brok)
             logger.debug("[elastic-logs] service check result: %s, %.2gs", service_id, time.clock() - start)
 
     def manage_log_brok(self, brok):
