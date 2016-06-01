@@ -358,7 +358,7 @@ class ElasticLogs(BaseModule):
             logger.info("[elastic-logs] removed %d logs older than %s days.", working_list, self.max_logs_age)
 
 	except Exception, exp:
-	    logger.error("[elastic-logs] Exception while rotating indices %s: %s", working_list, str(exp))
+	    logger.error("[elastic-logs] Exception while rotating indices: %s", str(exp))
 
 	if now < time.mktime(today0005.timetuple()):
             next_rotation = today0005
